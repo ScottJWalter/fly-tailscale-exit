@@ -3,16 +3,21 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "tailwings"
-primary_region = "nrt"
+app = "tailwings-sjwc"
+primary_region = "ord"
 kill_signal = "SIGINT"
 kill_timeout = "5s"
 
 [env]
   PORT = "41641"
-  # create a reusable auth key and set it:
-  # flyctl secrets set TAILSCALE_AUTH_KEY=tskey-...
-  # ephemeral keys are hardly working for use as exit node as they are ipv6 only
+
+[http_service]
+  internal_port = 41641
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[services]]
   protocol = "udp"
@@ -21,7 +26,13 @@ kill_timeout = "5s"
 
   [[services.ports]]
     port = 41641
+
   [services.concurrency]
     type = "connections"
     hard_limit = 100
     soft_limit = 75
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
