@@ -25,13 +25,6 @@ Checkout gbraad's fork if you want to include squid, dante and gitpod https://gi
 
 ![Screenshot](https://user-images.githubusercontent.com/3500621/129452513-52133b60-02b8-4ec8-9605-0a6e3a089f9e.png)
 
-<details>
-<summary>Video of tailscale on iOS changing exit nodes.</summary>
-<br>
-https://user-images.githubusercontent.com/3500621/129452512-616e7642-5a03-4037-9dc1-f6be96ca1e30.mp4
-</details>
-
-
 ## Setup
 
 #### 1. Have a GitHub account
