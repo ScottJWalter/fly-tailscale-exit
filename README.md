@@ -49,12 +49,9 @@ In order to use tailscale for exit traffic you need to configure a public DNS. G
 You have two options for authenticating your Tailscale nodes:
 
 ##### Option A: Create a tailscale auth key (traditional method)
-Create an auth key in tailscale: https://login.tailscale.com/admin/settings/authkeys
+Create a reusable auth key in tailscale: https://login.tailscale.com/admin/settings/authkeys
 
-Choose the following options:
-- `reusable` (for more than one device)
-- `ephemeral` (autoremove if going offline)
-- `pre-approved` (automatically approved)
+_A ephemeral key would be better for our use case, but it's restricted to IPv6 only by tailscale, which doesn't work so well as a VPN exit node._
 
 ##### Option B: Create an OAuth client (recommended)
 1. Go to your Tailscale admin console: https://login.tailscale.com/admin/settings/oauth
