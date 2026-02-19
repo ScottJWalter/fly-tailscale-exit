@@ -56,14 +56,14 @@ if [ -n "$TAILSCALE_OAUTH_CLIENT_ID" ] && [ -n "$TAILSCALE_OAUTH_SECRET" ]; then
     # Use the generated auth key
     /app/tailscale up \
         --auth-key=${AUTH_KEY} \
-        --hostname=fly-${FLY_REGION} \
+        --hostname=gateway-${FLY_REGION} \
         --advertise-exit-node
 else
     # Use Auth Key authentication directly
     echo "Using Auth Key authentication"
     /app/tailscale up \
         --auth-key=${TAILSCALE_AUTH_KEY} \
-        --hostname=fly-${FLY_REGION} \
+        --hostname=gateway-${FLY_REGION} \
         --advertise-exit-node #\
         #--advertise-tags=tag:fly-exit # requires ACL tagOwners
 fi
