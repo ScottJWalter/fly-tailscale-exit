@@ -68,5 +68,7 @@ else
         #--advertise-tags=tag:fly-exit # requires ACL tagOwners
 fi
 
+/app/tailscale set --advertise-routes=fdaa:6:67cb::/48
+
 echo "Tailscale started. Let's go!"
 sleep infinity
