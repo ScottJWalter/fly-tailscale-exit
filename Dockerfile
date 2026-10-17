@@ -1,33 +1,25 @@
-ARG TSVERSION=1.94.2
+ARG TSVERSION=1.104.1
 ARG TSFILE=tailscale_${TSVERSION}_amd64.tgz
 
-FROM alpine:latest as tailscale
+FROM alpine:3.24 AS tailscale
 ARG TSFILE
 WORKDIR /app
 
 RUN wget https://pkgs.tailscale.com/stable/${TSFILE} && \
   tar xzf ${TSFILE} --strip-components=1
-COPY . ./
 
-FROM alpine:latest
-# alpine:3.19 links iptables to iptables-nft https://gitlab.alpinelinux.org/alpine/aports/-/commit/f87a191922955bcf5c5f3fc66a425263a4588d48.
-# iptables-nft requires kernel support for nft, which is currently not available in Fly.io,
-# so we remove the links and ensure that the iptables-legacy version is used.
-RUN apk update && apk add ca-certificates iptables iptables-legacy ip6tables  \
-  && rm -rf /var/cache/apk/* \
-  && rm -f /sbin/iptables && ln -s /sbin/iptables-legacy /sbin/iptables  \
-  && rm -f /sbin/ip6tables && ln -s /sbin/ip6tables-legacy /sbin/ip6tables
+FROM alpine:3.24
+# busybox-extras provides httpd, used to serve the health check endpoint (see start.sh)
+RUN apk add --no-cache ca-certificates iptables ip6tables busybox-extras ethtool
 
-# creating directories for tailscale
-RUN mkdir -p /var/run/tailscale
-RUN mkdir -p /var/cache/tailscale
-RUN mkdir -p /var/lib/tailscale
+# tailscale state dirs + the directory httpd serves the health check from
+RUN mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale /var/www/cgi-bin
 
-# Copy binary to production image
-COPY --from=tailscale /app/tailscaled /app/tailscaled
-COPY --from=tailscale /app/tailscale /app/tailscale
-COPY --from=tailscale /app/start.sh /app/start.sh
+# tailscale binaries from the build stage; our scripts straight from the build context
+COPY --from=tailscale /app/tailscaled /app/tailscale /app/
+COPY start.sh /app/start.sh
+COPY healthz /var/www/cgi-bin/healthz
+RUN chmod +x /app/start.sh /var/www/cgi-bin/healthz
 
 # Run on container startup.
-USER root
 CMD ["/app/start.sh"]

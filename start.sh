@@ -13,62 +13,77 @@ sysctl -p /etc/sysctl.conf
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
+# Enable UDP GRO forwarding on the internet-facing NIC for better exit-node
+# throughput (Tailscale perf best practice; needs tailscale >=1.54 + kernel >=6.2).
+# Not persistent across reboots, but start.sh runs on every boot.
+NETDEV=$(awk '$2 == "00000000" { print $1; exit }' /proc/net/route)
+ethtool -K "$NETDEV" rx-udp-gro-forwarding on rx-gro-list off || \
+    echo "Could not enable UDP GRO forwarding on ${NETDEV} (continuing)"
+
 /app/tailscaled \
     --verbose=1 \
     --port 41641 \
     --state=mem: & # emphemeral-node mode (auto-remove)
     #--tun=userspace-networking
     #--socks5-server=localhost:1055
+TAILSCALED_PID=$!
+
+# Serve the health check endpoint for Fly's [checks] http check (see fly.toml).
+# /cgi-bin/healthz
+httpd -f -p 9002 -h /var/www &
 
 # Check if using OAuth or Auth Key
 if [ -n "$TAILSCALE_OAUTH_CLIENT_ID" ] && [ -n "$TAILSCALE_OAUTH_SECRET" ]; then
     echo "Using OAuth to generate an auth key"
-    
+
     # Get an access token using the OAuth client credentials
     OAUTH_TOKEN_RESPONSE=$(wget --quiet --output-document=- --header="Content-Type: application/x-www-form-urlencoded" \
                            --post-data="client_id=${TAILSCALE_OAUTH_CLIENT_ID}&client_secret=${TAILSCALE_OAUTH_SECRET}" \
                            https://api.tailscale.com/api/v2/oauth/token)
-    
+
     # Extract the access token
-    ACCESS_TOKEN=$(echo $OAUTH_TOKEN_RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
-    
+    ACCESS_TOKEN=$(echo "$OAUTH_TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+
     if [ -z "$ACCESS_TOKEN" ]; then
         echo "Failed to get access token from Tailscale API"
         exit 1
     fi
-    
+
     # Generate a new auth key using the access token
     AUTH_KEY_RESPONSE=$(wget --quiet --output-document=- --header="Content-Type: application/json" \
                         --header="Authorization: Bearer ${ACCESS_TOKEN}" \
                         --post-data='{"capabilities":{"devices":{"create":{"reusable":true,"ephemeral":false,"preauthorized":true,"tags":["tag:fly-exit"]}}}}' \
                         https://api.tailscale.com/api/v2/tailnet/-/keys)
-    
+
     # Extract the auth key
-    AUTH_KEY=$(echo $AUTH_KEY_RESPONSE | grep -o '"key":"[^"]*' | cut -d'"' -f4)
-    
+    AUTH_KEY=$(echo "$AUTH_KEY_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+
     if [ -z "$AUTH_KEY" ]; then
         echo "Failed to generate auth key from Tailscale API"
         exit 1
     fi
-    
+
     echo "Successfully generated auth key using OAuth"
-    
-    # Use the generated auth key
-    /app/tailscale up \
-        --auth-key=${AUTH_KEY} \
-        --hostname=gateway-${FLY_REGION} \
-        --advertise-exit-node
 else
-    # Use Auth Key authentication directly
+    # Use the directly-provided auth key
     echo "Using Auth Key authentication"
-    /app/tailscale up \
-        --auth-key=${TAILSCALE_AUTH_KEY} \
-        --hostname=gateway-${FLY_REGION} \
-        --advertise-exit-node #\
-        #--advertise-tags=tag:fly-exit # requires ACL tagOwners
+    AUTH_KEY="$TAILSCALE_AUTH_KEY"
 fi
 
-/app/tailscale set --advertise-routes=fdaa:6:67cb::/48
+# Optionally advertise tags (requires matching ACL tagOwners, see README).
+# Set TAILSCALE_ADVERTISE_TAGS=tag:fly-exit (comma-separated, no spaces).
+# ${VAR:+...} adds the flag only when the var is set and drops it when empty.
+# Unquoted on purpose: a tag list is a single token (tags contain no spaces),
+# so there's nothing to word-split.
+# shellcheck disable=SC2086
+/app/tailscale up \
+    --auth-key="${AUTH_KEY}" \
+    --hostname="fly-${FLY_REGION}" \
+    --advertise-exit-node \
+    ${TAILSCALE_ADVERTISE_TAGS:+--advertise-tags=$TAILSCALE_ADVERTISE_TAGS}
 
 echo "Tailscale started. Let's go!"
-sleep infinity
+
+# Block on tailscaled. If it exits (e.g. OOM-killed, see README), this returns
+# and the container exits so Fly restarts the machine
+wait "$TAILSCALED_PID"
